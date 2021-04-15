@@ -28,7 +28,7 @@ def JacGL1(u, size, mu):
 # Function that computes Newton-Rhapson iterations
 # to find a zero of a function
 def newton(x0, func, jac_func, tol, max_iter):
-    iter = 1
+    iter = 0
     norm_dx = 2 * tol
     x = x0
     while iter < max_iter and norm_dx > tol:
@@ -38,7 +38,7 @@ def newton(x0, func, jac_func, tol, max_iter):
         norm_dx = np.linalg.norm(dx)
         iter = iter + 1
     #print('Newton converged after ' + str(iter) + ' iterations.')
-    return x
+    return x, iter
         
 def zero_of_GL1(u0, size, mu):
     tol = 1e-6
@@ -73,7 +73,7 @@ def init(num_branches, size):
     for idx in range(0, num_branches):
         uk = eps * eig_vec[:, idx] / np.max(eig_vec[:, idx])
         mus[idx] = np.real((1 + gamma) * eig_val[idx])
-        res[idx, :] = zero_of_GL1(uk, size, mus[idx])
+        res[idx, :], _ = zero_of_GL1(uk, size, mus[idx])
     return res, mus
     
 def cont(mu, u0, mu_end, steps):
@@ -82,5 +82,26 @@ def cont(mu, u0, mu_end, steps):
     res = np.zeros((steps, size))
     res[0, :] = zero_of_GL1(u0, size, mu_steps[0])
     for step in range(1, steps):
-        res[step, :] = zero_of_GL1(res[step - 1], size, mu_steps[step])
+        res[step, :], _ = zero_of_GL1(res[step - 1], size, mu_steps[step])
+    return res
+    
+def forcing_fGL1(u, size, mu, epsilon):
+    return (linGL1(size) @ u + mu * (u - u ** 3 / 3) + epsilon * np.linspace(0, 1, size) * ( np.ones(size) - np.linspace(0, 1, size)))
+		
+def zero_of_forcing_GL1(u0, size, mu, epsilon):
+    tol = 1e-6
+    max_iter = 200
+    l_fGL1 = lambda u: forcing_fGL1(u, size, mu, epsilon)
+    l_JacGL1 = lambda u: JacGL1(u, size, mu)
+    return newton(u0, l_fGL1, l_JacGL1, tol, max_iter)
+
+def forcing_cont(mu, u0, mu_end, steps, epsilon):
+    size = len(u0)
+    mu_steps = np.linspace(mu, mu_end, steps)
+    res = np.zeros((steps, size))
+    iters = np.zeros(steps)
+    res[0, :], iters[0] = zero_of_forcing_GL1(u0, size, mu_steps[0], epsilon)
+    for step in range(1, steps):
+        # Use the previous estimate as the new starting point
+        res[step, :], iters[step] = zero_of_forcing_GL1(res[step - 1], size, mu_steps[step], epsilon)
     return res
